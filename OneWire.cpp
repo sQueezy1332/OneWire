@@ -47,6 +47,8 @@ bool CRIT_TIMING OneWire::reset(void)
 	DIRECT_MODE_INPUT(reg, mask);	// allow it to float
 	delayMicroseconds(69);
 	r = !DIRECT_READ(reg, mask);
+	delayMicroseconds(230);
+	r &= DIRECT_READ(reg, mask);
 	interrupts();
 	delayMicroseconds(410);
 	return r;
