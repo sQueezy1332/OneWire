@@ -58,15 +58,14 @@ bool CRIT_TIMING OneWire::reset(void)
 void CRIT_TIMING OneWire::write_bit(bool v)
 {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	__attribute__((unused)) volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
+	UNUSED volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	if (v) {
 		noInterrupts();
-		//DIRECT_WRITE_LOW(reg, mask);
 		DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
 		delayMicroseconds(TIMESLOT_START);
 		DIRECT_MODE_INPUT(reg, mask);	//// drive output high
 		interrupts();
-		delayMicroseconds(TIMESLOT_RECOVERY + TIMESLOT_READ);
+		delayMicroseconds(TIMESLOT - TIMESLOT_START);
 	} else {
 		noInterrupts();
 		//DIRECT_WRITE_LOW(reg, mask);
@@ -74,7 +73,7 @@ void CRIT_TIMING OneWire::write_bit(bool v)
 		delayMicroseconds(TIMESLOT_LOW);
 		DIRECT_MODE_INPUT(reg, mask);	//// drive output high
 		interrupts();
-		delayMicroseconds(TIMESLOT - TIMESLOT_RECOVERY);
+		delayMicroseconds(TIMESLOT - TIMESLOT_LOW);
 	}
 }
 
@@ -85,17 +84,16 @@ void CRIT_TIMING OneWire::write_bit(bool v)
 bool CRIT_TIMING OneWire::read_bit(void)
 {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	__attribute__((unused)) volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
+	UNUSED volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	bool r;
 	noInterrupts();
 	DIRECT_MODE_OUTPUT(reg, mask);
-	//DIRECT_WRITE_LOW(reg, mask);
 	delayMicroseconds(TIMESLOT_START);
 	DIRECT_MODE_INPUT(reg, mask);	// let pin float, pull up will raise
 	delayMicroseconds(TIMESLOT_READ);
 	r = DIRECT_READ(reg, mask);
 	interrupts();
-	delayMicroseconds(TIMESLOT_RECOVERY);
+	delayMicroseconds(TIMESLOT - TIMESLOT_READ - TIMESLOT_START);
 	return r;
 }
 
