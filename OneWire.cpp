@@ -59,22 +59,18 @@ void CRIT_TIMING OneWire::write_bit(bool v)
 {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
 	UNUSED volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
+	noInterrupts();
+	DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
 	if (v) {
-		noInterrupts();
-		DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
 		delayMicroseconds(TIMESLOT_START);
 		DIRECT_MODE_INPUT(reg, mask);	//// drive output high
-		interrupts();
 		delayMicroseconds(TIMESLOT - TIMESLOT_START);
 	} else {
-		noInterrupts();
-		//DIRECT_WRITE_LOW(reg, mask);
-		DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
 		delayMicroseconds(TIMESLOT_LOW);
 		DIRECT_MODE_INPUT(reg, mask);	//// drive output high
-		interrupts();
 		delayMicroseconds(TIMESLOT - TIMESLOT_LOW);
 	}
+	interrupts();
 }
 
 //
