@@ -38,19 +38,16 @@ bool CRIT_TIMING OneWire::reset(void)
 			delayMicroseconds(1);
 		}; 
 	}
-	noInterrupts();
-	//DIRECT_WRITE_LOW(reg, mask);
 	DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
-	interrupts();
 	delayMicroseconds(480);
-	noInterrupts();
 	DIRECT_MODE_INPUT(reg, mask);	// allow it to float
+	noInterrupts();
 	delayMicroseconds(69);
 	r = !DIRECT_READ(reg, mask);
 	delayMicroseconds(230);
 	r &= DIRECT_READ(reg, mask);
 	interrupts();
-	delayMicroseconds(410);
+	delayMicroseconds(180);
 	return r;
 }
 
