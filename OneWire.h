@@ -24,7 +24,7 @@ public:
 #else
 	//pInit(pin, INPUT);
 #endif // __AVR__
-		pInit(pin_onewire, INPUT);
+		pInit(pin, INPUT);
 #if ONEWIRE_SEARCH
 		reset_search();
 #endif
