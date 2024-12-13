@@ -1,14 +1,18 @@
 #include <OneWire.h> // http://www.pjrc.com/teensy/td_libs_OneWire.html
+#include <stdio.h>
 #if defined (__AVR__)
 #define LED 13
-#define ibuttonpin 2
+#define ibuttonpin 4
+#define pullup_pin 9
 #define PIN 2
 #elif defined CONFIG_IDF_TARGET_ESP32
 #define LED 2
 #define ibuttonpin 32
+#define pullup_pin 9
 #elif defined CONFIG_IDF_TARGET_ESP32C3
 #define LED 8
 #define ibuttonpin 3
+#define pullup_pin 9
 #endif
 #if defined CONFIG_IDF_TARGET_ESP32C3
 #define LED_ON	0
@@ -19,48 +23,86 @@
 #endif
 #define LED_DELAY 50
 #define LED_BLINK_COUNT 5
-const uint8_t Pin_Onewire = ibuttonpin;
+
+typedef const byte cbyte;
+const uint8_t pin_onewire = ibuttonpin;
 OneWire ibutton;
-byte key[8];
-const byte rom[8] = { 0x1, 0xBE, 0x40, 0x11, 0x5A, 0x36, 0x0, 0xE1 };
-bool led_state = LED_OFF;
+
+static const byte rom[8] = { 0x01, 0xBE, 0x40, 0x11, 0x5A, 0x36, 0x00, 0xE1 };
+static const byte rom_em[8] = { 0x01, 0x62, 0xBA, 0x5D, 0x00, 0x0A, 0x00, 0xC0 };
+static byte key[8];
+uint64_t cards[23];
 
 void led_blink(byte count = LED_BLINK_COUNT, byte led_delay = LED_DELAY) {
-	for (byte i = 0; i < count * 2; i++) {
-		digitalWrite(LED, led_state = !led_state);
+	while (count--) {
+		digitalWrite(LED, LED_ON);
+		delay(led_delay);
+		digitalWrite(LED, LED_OFF);
 		delay(led_delay);
 	}
 }
 
 void setup() {
 	pinMode(LED, OUTPUT);
-	digitalWrite(LED, led_state);
-	Serial.begin(115200);
+	digitalWrite(LED, LED_OFF);
+	pinMode(pullup_pin, OUTPUT);
+	digitalWrite(pullup_pin, 1);
+	Serial.begin(250000);
 	led_blink();
 	Serial.println("\nReady");
 }
 
-
-void keyvalidcheck() {
-	//byte rom[8] = { 0x1, 0xBE, 0x40, 0x11, 0x5A, 0x36, 0x0, 0xE1 };
-	for (byte i = 0; i < 8; i++)
-		if (key[i] != rom[i]) return;
-	Serial.print("\tKey is valid!");
-	led_blink();
+bool keyCompare(cbyte(&buf)[8], cbyte(&com)[8]) {
+	for (byte i = 0; i < 8; i++) if (buf[i] != com[i]) return false;
+	return true;
 }
-void printkey(bool valid_check) {
-	Serial.print("ROM \t");
+
+void sortingArray(uint64_t buf[], byte& keyReaded) {
+	byte next = 0;
+	const byte size = sizeof(cards[0]);
+	for (byte first = 0, second; first < keyReaded; first++) {
+		if (buf[first] == 0) continue;
+		for (second = first + 1; second < keyReaded; second++) {
+			if (buf[second] == 0) continue;
+			if (buf[first] == buf[second])  buf[second] = 0;
+			else buf[first + 1] = buf[second];
+		}
+		if (buf[first] == 0) {
+			for (; next < keyReaded; next++) {
+				if (buf[next]) {
+					buf[first] = buf[next];
+					buf[next] = 0; break;
+				}
+			}
+			if (next == keyReaded) {
+				keyReaded = first;
+				return;
+			}
+		}
+		for (second = ++next; second < keyReaded; second++) {
+			if (buf[second]) continue;
+			if (!(buf[first] != buf[second]))
+				buf[second] = 0;
+		}
+	}
+}
+
+void printkey(cbyte(&buf)[8] = key) {
+	//Serial.print("\nROM\t");
 	for (byte i = 0; i < 8; i++) {
 #ifdef ARDUINO_ARCH_ESP32
-		Serial.printf("%02X ", key[i]);
-#else
-		Serial.print(' '); Serial.print(key[i], HEX);
+		Serial.printf("%02X ", buf[i]);
+#else	
+		Serial.print(' ');
+		if ((buf[i] & 0xF0) == 0) Serial.print('0');
+		Serial.print(buf[i], HEX);
 #endif
+}
+	byte crc = ibutton.crc8(buf, 7); //
+	if (crc != buf[7]) {
+		Serial.print("\tCRC not valid!\t");
+		Serial.print(crc, HEX);
 	}
-	if (ibutton.crc8(key, 7) != key[7])
-		Serial.print("\tCRC is not valid!");
-	if (valid_check ) keyvalidcheck();
-	Serial.println();
 }
 
 void send_programming_impulse() {
@@ -71,94 +113,132 @@ void send_programming_impulse() {
 	digitalWrite(ibuttonpin, HIGH);
 	delay(50);
 }
+
 void writekey() {
-	Serial.print("\tStart programming..."); // íà÷àëî ïðîöåññà çàïèñè äàííûõ â êëþ÷
+	Serial.print("\tStart programming..."); // Ð½Ð°Ñ‡Ð°Ð»Ð¾ Ð¿Ñ€Ð¾Ñ†ÐµÑÑÐ° Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð² ÐºÐ»ÑŽÑ‡
 	//printkey();
 	byte b;
-	for (int i = 0; i < 8; i++) {
-		// ôîðìèðîâàíèå 4-õ áàéò äëÿ çàïèñè â êëþ÷ - ñì. ðèñ.4 èç datasheet äëÿ ïîäðîáíîñòåé
-		ibutton.reset(); // ñáðîñ êëþ÷à 
-		key[0] = 0x3C; // îòïðàâëÿåì êîìàíäó "êîïèðîâàòü èç áóôåðà â ÏÇÓ"
-		key[1] = i; // óêàçûâàåì áàéò äëÿ çàïèñè
+	for (byte i = 0; i < 8; i++) {
+		// Ñ„Ð¾Ñ€Ð¼Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ 4-Ñ… Ð±Ð°Ð¹Ñ‚ Ð´Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð² ÐºÐ»ÑŽÑ‡ - ÑÐ¼. Ñ€Ð¸Ñ.4 Ð¸Ð· datasheet Ð´Ð»Ñ Ð¿Ð¾Ð´Ñ€Ð¾Ð±Ð½Ð¾ÑÑ‚ÐµÐ¹
+		key[0] = 0x3C; // Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÑÐµÐ¼ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñƒ "ÐºÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð¸Ð· Ð±ÑƒÑ„ÐµÑ€Ð° Ð² ÐŸÐ—Ð£"
+		key[1] = i; // ÑƒÐºÐ°Ð·Ñ‹Ð²Ð°ÐµÐ¼ Ð±Ð°Ð¹Ñ‚ Ð´Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸
 		key[2] = 0;
 		key[3] = rom[i];
-		ibutton.write_bytes(key, 4); // çàïèñûâàåì i-ûé áàéò â êëþ÷
+		while (!ibutton.reset()); // ÑÐ±Ñ€Ð¾Ñ ÐºÐ»ÑŽÑ‡Ð° 
+		ibutton.write_bytes(key, 4); // Ð·Ð°Ð¿Ð¸ÑÑ‹Ð²Ð°ÐµÐ¼ i-Ñ‹Ð¹ Ð±Ð°Ð¹Ñ‚ Ð² ÐºÐ»ÑŽÑ‡
 
-		b = ibutton.read(); // ñ÷èòûâàåì áàéò èç êëþ÷à
+		b = ibutton.read(); // ÑÑ‡Ð¸Ñ‚Ñ‹Ð²Ð°ÐµÐ¼ Ð±Ð°Ð¹Ñ‚ Ð¸Ð· ÐºÐ»ÑŽÑ‡Ð°
 
-		if (OneWire::crc8(key, 4) != b) { // ïðè îøèáêå êîíòðîëüíîé ñóììû
-			Serial.println("Error while programming!"); // ñîîáùàåì îá ýòîì
-			return; // è îòìåíÿåì çàïèñü êëþ÷à
+		if (OneWire::crc8(key, 4) != b) { // Ð¿Ñ€Ð¸ Ð¾ÑˆÐ¸Ð±ÐºÐµ ÐºÐ¾Ð½Ñ‚Ñ€Ð¾Ð»ÑŒÐ½Ð¾Ð¹ ÑÑƒÐ¼Ð¼Ñ‹
+			Serial.println("Error while programming!"); // ÑÐ¾Ð¾Ð±Ñ‰Ð°ÐµÐ¼ Ð¾Ð± ÑÑ‚Ð¾Ð¼
+			return; // Ð¸ Ð¾Ñ‚Ð¼ÐµÐ½ÑÐµÐ¼ Ð·Ð°Ð¿Ð¸ÑÑŒ ÐºÐ»ÑŽÑ‡Ð°
 		}
-		send_programming_impulse(); // åñëè âñ¸ õîðîøî, ïîñûëàåì èìïóëüñ äëÿ çàïèñè i-ãî áàéòà â êëþ÷
+		send_programming_impulse(); // ÐµÑÐ»Ð¸ Ð²ÑÑ‘ Ñ…Ð¾Ñ€Ð¾ÑˆÐ¾, Ð¿Ð¾ÑÑ‹Ð»Ð°ÐµÐ¼ Ð¸Ð¼Ð¿ÑƒÐ»ÑŒÑ Ð´Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸ i-Ð³Ð¾ Ð±Ð°Ð¹Ñ‚Ð° Ð² ÐºÐ»ÑŽÑ‡
 	}
-	Serial.println("Success!"); // ñîîáùåíèå îá óñïåøíîé çàïèñè äàííûõ â êëþ÷  
+	Serial.println("Success!"); // ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ Ð¾Ð± ÑƒÑÐ¿ÐµÑˆÐ½Ð¾Ð¹ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð² ÐºÐ»ÑŽÑ‡  
 }
+
+void writeBit(bool bit) {
+	if (bit) {
+		pinMode(ibuttonpin, OUTPUT);
+		delayUs(60);
+		pinMode(ibuttonpin, INPUT);
+		delay(10);
+	}
+	else {
+		pinMode(ibuttonpin, OUTPUT);
+		delayUs(5);
+		pinMode(ibuttonpin, INPUT);
+		delay(10);
+	}
+}
+
 void writeByte(byte data) {
-	byte data_bit = 0;
-	for (; data_bit < 8; data_bit++) {
-		if (data & 1) {
-			digitalWrite(ibuttonpin, LOW);
-			pinMode(ibuttonpin, OUTPUT);
-			delayMicroseconds(60);
-			pinMode(ibuttonpin, INPUT);
-			digitalWrite(ibuttonpin, HIGH);
-			delay(10);
-		}
-		else {
-			digitalWrite(ibuttonpin, LOW);
-			pinMode(ibuttonpin, OUTPUT);
-			delayMicroseconds(5);
-			pinMode(ibuttonpin, INPUT);
-			digitalWrite(ibuttonpin, HIGH);
-			delay(10);
-		}
-		data = data >> 1;
+	for (byte bitmask = 1; bitmask; bitmask <<= 1) {
+		writeBit(data & bitmask);
 	}
-	return;
 }
-void write1990() {
-	Serial.print("\t");
 
-	ibutton.write(0xD1); // ðàçðåøàåì çàïèñü, îòïðàâëÿåì áèò 0
-	digitalWrite(ibuttonpin, LOW);
-	pinMode(ibuttonpin, OUTPUT);
-	delayMicroseconds(60);
-	pinMode(ibuttonpin, INPUT);
-	digitalWrite(ibuttonpin, HIGH);
-	delay(10);
-
-	ibutton.reset();
-	ibutton.write(0xD5); // êîìàíäà çàïèñè
-	for (byte i = 0; i < 8; i++) {
-		writeByte(key[i]);
-		Serial.print("*");
-	}
-	Serial.print("\n");
-	ibutton.reset();
-
-	ibutton.write(0xD1); // êîìàíäà âûõîäà èç ðåæèìà çàïèñè
-	digitalWrite(ibuttonpin, LOW);
-	pinMode(ibuttonpin, OUTPUT);
-	delayMicroseconds(10);
-	pinMode(ibuttonpin, INPUT);
-	digitalWrite(ibuttonpin, HIGH);
-	delay(10);
-	Serial.println("Success!");
-	delay(2000);
-}
-void read_rom() {
-	while (!ibutton.reset());
+void read_rom(byte buf[] = key, byte count = 8) {
+	while (!ibutton.reset()) {
+		//while(!digitalRead(ibuttonpin)) delay(100); 
+	};
+	// delay(10000);
 	ibutton.write(0x33);
-	ibutton.read_bytes(key, 8);
+	ibutton.read_bytes(buf, count);
+	Serial.print("\n0x33\t");
 }
+
+void write1990(cbyte(&buf)[8] = rom) {
+	Serial.println("\nWait key to write ...");
+	while (!ibutton.reset());
+	Serial.print('\t');
+	ibutton.write(0xD1);	//Ñ€Ð°Ð·Ñ€ÐµÑˆÐ°ÐµÐ¼ Ð·Ð°Ð¿Ð¸ÑÑŒ
+	writeBit(0);			//Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÑÐµÐ¼ Ð±Ð¸Ñ‚ 0
+	while (!ibutton.reset());
+	ibutton.write(0xD5);	//ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð·Ð°Ð¿Ð¸ÑÐ¸
+	for (byte i = 0; i < 8; i++) {
+		writeByte(buf[i]);
+		Serial.print('*');
+	}
+	Serial.println();
+	while (!ibutton.reset());
+	ibutton.write(0xD1);	//ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð²Ñ‹Ñ…Ð¾Ð´Ð° Ð¸Ð· Ñ€ÐµÐ¶Ð¸Ð¼Ð° Ð·Ð°Ð¿Ð¸ÑÐ¸
+	writeBit(1);
+	read_rom();
+	Serial.println(keyCompare(key, buf) ? "Success!" : "Error!");
+	delay(2000); //Serial
+}
+
+void print_zero(byte& count) { for (; count; count--) Serial.print('0'); }
+void print_em() {
+	uint32_t dez10 = *(uint32_t*)(key + 1);
+	byte facility = (dez10 >> 16);
+	byte zero = 0;
+	if (dez10 < 10000000ul) zero = 3;
+	else if (dez10 < 100000000ul) zero = 2;
+	else if (dez10 < 1000000000ul) zero = 1;
+	Serial.print('\t');
+	print_zero(zero);
+	Serial.print(dez10); Serial.print('\t');
+	if (facility == 0) zero = 3;
+	else if (facility < 10) zero = 2;
+	else if (facility < 100) zero = 1;
+	else zero = 0;
+	print_zero(zero);
+	Serial.print(facility);
+	Serial.print(',');
+	Serial.print((uint16_t)dez10);
+	//Serial.println();
+}
+uint32_t timestamp;
 void loop() {
-	while (!ibutton.search(key)){};
-	//read_rom();
-	digitalWrite(LED, led_state = !led_state);
-	printkey(1);
+	
+	//timestamp = micros();
+	//for (byte count = 0;; count++) {
+	//	read_rom();
+	//	if (count == 23) { timestamp = micros() - timestamp; Serial.println(); Serial.println(timestamp); return; }
+	//	
+	//}
+	//while (!ibutton.search(key)){};
+	//while (digitalRead(ibuttonpin)) {};
+	for (byte i = 0;i < 23;i++) {
+		
+		read_rom();
+		digitalWrite(LED, LED_ON);
+		printkey();
+		digitalWrite(LED, LED_OFF);
+	}
+	delay(1000);
+	//digitalWrite(LED, LED_ON);
+	//if (keyCompare(key, rom_em)) { pinMode(ibuttonpin, OUTPUT); timestamp = millis(); Serial.print("\tKey is valid!"); }
+	//printkey();// delay(500);
+	//print_em();
+	//if (keyCompare(key, rom)) { Serial.print("\tKey is valid!");  led_blink(); }
+	//if (!digitalRead(ibuttonpin)) { while (millis() - timestamp < 2500) { led_blink(); }; pinMode(ibuttonpin, INPUT); }
 	//write1990();
+
 	//ibutton.reset_search();
-	digitalWrite(LED, led_state = !led_state);
+	//digitalWrite(LED, LED_OFF);
 	//delay(1000);
 }
