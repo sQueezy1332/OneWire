@@ -16,8 +16,8 @@ protected:
 #endif
 public:
 	OneWire() { };
-	//OneWire(uint8_t pin) { begin(pin); }
-	void begin() {
+	OneWire(uint8_t pin) { begin(pin); }
+	void begin(uint8_t pin = pin_onewire) {
 #if not defined __AVR__ && defined OUTPUT_OPEN_DRAIN
 		pInit(pin, OUTPUT_OPEN_DRAIN);
 		DIRECT_WRITE_HIGH(pin);
