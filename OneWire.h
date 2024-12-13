@@ -114,8 +114,8 @@ public:
 		return true;
 	};
 
-	virtual void power(); 
-	virtual void depower();
+	virtual void power() {};
+	virtual void depower() {};
 
 #if ONEWIRE_SEARCH
 	// Clear the search state so that if will start from the beginning again.
