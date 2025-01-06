@@ -2,8 +2,8 @@
 
 //#ifdef __cplusplus
 #include "defines.h"
-__attribute__((weak)) extern const uint8_t pin_onewire;
-
+//__attribute__((weak)) extern const uint8_t pin_onewire;
+template <byte PIN>
 class OneWire
 {
 protected:
@@ -17,7 +17,7 @@ protected:
 public:
 	OneWire() { };
 	OneWire(uint8_t pin) { begin(pin); }
-	void begin(uint8_t pin = pin_onewire) {
+	void begin(uint8_t pin = PIN) {
 #if not defined __AVR__ && defined OUTPUT_OPEN_DRAIN
 		pInit(pin, OUTPUT_OPEN_DRAIN);
 		DIRECT_WRITE_HIGH(pin);
@@ -32,36 +32,36 @@ public:
 
 	bool reset(void) {
 		bool r;
-		if (!DIRECT_READ(pin_onewire)) {
-			for (uint8_t retries = 255; !DIRECT_READ(pin_onewire); --retries) {
+		if (!DIRECT_READ(PIN)) {
+			for (uint8_t retries = 255; !DIRECT_READ(PIN); --retries) {
 				if (retries == 0) return false; // wait until the wire is high... just in case
 				delayUs(1);
 			};
 		}
-		DIRECT_WRITE_LOW(pin_onewire);	// drive output low
+		DIRECT_WRITE_LOW(PIN);	// drive output low
 		delayUs(480);
-		DIRECT_WRITE_HIGH(pin_onewire);	// allow it to float
+		DIRECT_WRITE_HIGH(PIN);	// allow it to float
 		noInterrupts();
 		delayUs(69);
-		r = !DIRECT_READ(pin_onewire);
+		r = !DIRECT_READ(PIN);
 		delayUs(230);
-		r &= DIRECT_READ(pin_onewire);
+		r &= DIRECT_READ(PIN);
 		delayUs(180);
-		r &= DIRECT_READ(pin_onewire);
+		r &= DIRECT_READ(PIN);
 		interrupts();
 		return r;
 	};
 
 	void write_bit(bool v) {
 		noInterrupts();
-		DIRECT_WRITE_LOW(pin_onewire);	// drive output low
+		DIRECT_WRITE_LOW(PIN);	// drive output low
 		if (v) {
 			delayUs(TIMESLOT_START);
-			DIRECT_WRITE_HIGH(pin_onewire);	//// drive output high
+			DIRECT_WRITE_HIGH(PIN);	//// drive output high
 			delayUs(TIMESLOT - TIMESLOT_START);
 		} else {
 			delayUs(TIMESLOT_LOW);
-			DIRECT_WRITE_HIGH(pin_onewire);	//// drive output high
+			DIRECT_WRITE_HIGH(PIN);	//// drive output high
 			delayUs(TIMESLOT - TIMESLOT_LOW);
 		}
 		interrupts();
@@ -70,11 +70,11 @@ public:
 	bool read_bit(void) {
 		bool r;
 		noInterrupts();
-		DIRECT_WRITE_LOW(pin_onewire);
+		DIRECT_WRITE_LOW(PIN);
 		delayUs(TIMESLOT_START);
-		DIRECT_WRITE_HIGH(pin_onewire);	// let pin float, pull up will raise
+		DIRECT_WRITE_HIGH(PIN);	// let pin float, pull up will raise
 		delayUs(TIMESLOT_READ);
-		r = DIRECT_READ(pin_onewire);
+		r = DIRECT_READ(PIN);
 		delayUs(TIMESLOT - TIMESLOT_READ - TIMESLOT_START);
 		interrupts();
 		return r;
@@ -89,7 +89,7 @@ public:
 	}
 	// Read a byte.
 	uint8_t read(void) {
-		for (uint8_t mask = 1, B = 0;;) { if (read_bit()) B |= mask; if ((mask <<= 1) == 0) return B; }
+		for (uint8_t mask = 1, B = 0;;) { if (read_bit()) B |= mask; if (!(mask <<= 1)) return B; }
 	}
 
 	void read_bytes(uint8_t* buf, uint16_t count) { for (uint16_t i = 0; i < count; i++)  buf[i] = read(); }
