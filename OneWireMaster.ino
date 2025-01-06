@@ -25,8 +25,8 @@
 #define LED_BLINK_COUNT 5
 
 typedef const byte cbyte;
-const uint8_t pin_onewire = ibuttonpin;
-OneWire ibutton;
+//const uint8_t pin_onewire = ibuttonpin;
+OneWire <ibuttonpin> ibutton;
 
 static const byte rom[8] = { 0x01, 0xBE, 0x40, 0x11, 0x5A, 0x36, 0x00, 0xE1 };
 static const byte rom_em[8] = { 0x01, 0x62, 0xBA, 0x5D, 0x00, 0x0A, 0x00, 0xC0 };
@@ -129,7 +129,7 @@ void writekey() {
 
 		b = ibutton.read(); // считываем байт из ключа
 
-		if (OneWire::crc8(key, 4) != b) { // при ошибке контрольной суммы
+		if (ibutton.crc8(key, 4) != b) { // при ошибке контрольной суммы
 			Serial.println("Error while programming!"); // сообщаем об этом
 			return; // и отменяем запись ключа
 		}
