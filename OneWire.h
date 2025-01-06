@@ -39,14 +39,12 @@ public:
 			};
 		}
 		DIRECT_WRITE_LOW(PIN);	// drive output low
-		delayUs(480);
+		delayUs(TIMESLOT * 8);
 		DIRECT_WRITE_HIGH(PIN);	// allow it to float
 		noInterrupts();
-		delayUs(69);
+		delayUs(TIMESLOT + (TIMESLOT / 6));
 		r = !DIRECT_READ(PIN);
-		delayUs(230);
-		r &= DIRECT_READ(PIN);
-		delayUs(180);
+		delayUs(TIMESLOT * 7 - (TIMESLOT / 6));
 		r &= DIRECT_READ(PIN);
 		interrupts();
 		return r;
@@ -60,9 +58,9 @@ public:
 			DIRECT_WRITE_HIGH(PIN);	//// drive output high
 			delayUs(TIMESLOT - TIMESLOT_START);
 		} else {
-			delayUs(TIMESLOT_LOW);
+			delayUs(TIMESLOT / 10 * 7);
 			DIRECT_WRITE_HIGH(PIN);	//// drive output high
-			delayUs(TIMESLOT - TIMESLOT_LOW);
+			delayUs(TIMESLOT - (TIMESLOT / 10 * 7));
 		}
 		interrupts();
 	};
@@ -73,9 +71,9 @@ public:
 		DIRECT_WRITE_LOW(PIN);
 		delayUs(TIMESLOT_START);
 		DIRECT_WRITE_HIGH(PIN);	// let pin float, pull up will raise
-		delayUs(TIMESLOT_READ);
+		delayUs(TIMESLOT / 4);
 		r = DIRECT_READ(PIN);
-		delayUs(TIMESLOT - TIMESLOT_READ - TIMESLOT_START);
+		delayUs(TIMESLOT - (TIMESLOT / 4) - TIMESLOT_START);
 		interrupts();
 		return r;
 	}
