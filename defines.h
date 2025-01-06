@@ -41,9 +41,6 @@
 #endif
 #define TIMESLOT 60
 #define TIMESLOT_START 3
-#define TIMESLOT_READ 15
-//#define TIMESLOT_RECOVERY 50
-#define TIMESLOT_LOW 45
 
 #define pInit(pin, mode)    gio::init(pin, mode)
 #define DIRECT_READ(pin)	gio::read(pin)
