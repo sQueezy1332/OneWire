@@ -46,18 +46,18 @@ public:
 	};
 
 	bool reset(void) {
-		bool r;
 		if (!DIRECT_READ(PIN)) {
-			for (size_t retries = 255; !DIRECT_READ(PIN);delayUs(1)) {
-				if (--retries == 0) return false; // wait until the wire is high... just in case
-			};
+			//for (size_t retries = 255; !DIRECT_READ(PIN);delayUs(1)) {
+			//	if (--retries == 0) return false; // wait until the wire is high... just in case
+			//};
+			return false;
 		}
 		DIRECT_WRITE_LOW(PIN);	// drive output low
 		delayUs(TIMESLOT * 8);
 		DIRECT_WRITE_HIGH(PIN);	// allow it to float
 		//AutoInt obj;
 		delayUs(TIMESLOT + (TIMESLOT / 6));
-		r = !DIRECT_READ(PIN);
+		bool r = !DIRECT_READ(PIN);
 		delayUs(TIMESLOT * 7 - (TIMESLOT / 6));
 		r &= DIRECT_READ(PIN);
 		return r;
