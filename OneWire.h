@@ -68,11 +68,11 @@ public:
 		DIRECT_WRITE_LOW(PIN);	// drive output low
 		if (v) {
 			delayUs(TIMESLOT_START);
-			DIRECT_WRITE_HIGH(PIN);	//// drive output high
+			DIRECT_WRITE_HIGH(PIN);	//	 drive output high
 			delayUs(TIMESLOT - TIMESLOT_START);
 		} else {
 			delayUs(TIMESLOT / 10 * 7);
-			DIRECT_WRITE_LOW(PIN);	//// drive output high
+			DIRECT_WRITE_LOW(PIN);	//	 drive output low
 			delayUs(TIMESLOT - (TIMESLOT / 10 * 7));
 		}
 	};
