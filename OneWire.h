@@ -58,7 +58,9 @@ public:
 		//AutoInt obj;
 		delayUs(TIMESLOT + (TIMESLOT / 6));
 		bool r = !DIRECT_READ(PIN);
-		delayUs(TIMESLOT * 7 - (TIMESLOT / 6));
+		delayUs(TIMESLOT);
+		r &= !DIRECT_READ(PIN);
+		delayUs(TIMESLOT * 6 - (TIMESLOT / 6));
 		r &= DIRECT_READ(PIN);
 		return r;
 	};
