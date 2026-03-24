@@ -2,56 +2,69 @@
 
 //#ifdef __cplusplus
 #include "defines.h"
-//__attribute__((weak)) extern const uint8_t pin_onewire;
-template <byte PIN>
+
+struct AutoInt {
+	AutoInt() { noInterrupts(); };
+	~AutoInt() { interrupts(); };
+	AutoInt(const AutoInt&) = delete;
+	AutoInt& operator=(const AutoInt&) = delete;
+};
+
+template <int PIN>
 class OneWire
 {
+public:
+	
 protected:
 #if ONEWIRE_SEARCH
 	// global search state
-	unsigned char ROM_NO[8];
-	uint8_t LastDiscrepancy;
-	uint8_t LastFamilyDiscrepancy;
-	bool LastDeviceFlag;
+	
+	struct search_buf_s {
+		uint8_t LastDiscrepancy : 7;
+		uint8_t LastFamilyDiscrepancy : 7;
+		uint8_t LastDeviceFlag : 1;
+		uint8_t unused : 1;
+		uint8_t ROM_NO[8];
+	} srch {};
+	static_assert(sizeof(srch) == 10);
 #endif
 public:
-	OneWire() { };
-	OneWire(uint8_t pin) { begin(pin); }
+	
+	OneWire() { begin(PIN); };
+	//OneWire(uint8_t pin) { begin(); }
 	void begin(uint8_t pin = PIN) {
 #if not defined __AVR__ && defined OUTPUT_OPEN_DRAIN
 		pInit(pin, OUTPUT_OPEN_DRAIN);
 		DIRECT_WRITE_HIGH(pin);
 #else
-	//pInit(pin, INPUT);
+	pInit(pin, INPUT);
 #endif // __AVR__
-		pInit(pin, INPUT);
+		//pInit(pin, INPUT);
 #if ONEWIRE_SEARCH
-		reset_search();
+		//resetsrch();
 #endif
 	};
 
 	bool reset(void) {
 		bool r;
 		if (!DIRECT_READ(PIN)) {
-			for (uint8_t retries = 255; !DIRECT_READ(PIN); --retries) {
-				if (retries == 0) return false; // wait until the wire is high... just in case
-				delayUs(1);
+			for (size_t retries = 255; !DIRECT_READ(PIN);delayUs(1)) {
+				if (--retries == 0) return false; // wait until the wire is high... just in case
 			};
 		}
 		DIRECT_WRITE_LOW(PIN);	// drive output low
 		delayUs(TIMESLOT * 8);
 		DIRECT_WRITE_HIGH(PIN);	// allow it to float
-		noInterrupts();
+		//AutoInt obj;
 		delayUs(TIMESLOT + (TIMESLOT / 6));
 		r = !DIRECT_READ(PIN);
 		delayUs(TIMESLOT * 7 - (TIMESLOT / 6));
 		r &= DIRECT_READ(PIN);
-		interrupts();
 		return r;
 	};
 
 	void write_bit(bool v) {
-		noInterrupts();
+		AutoInt obj;
 		DIRECT_WRITE_LOW(PIN);	// drive output low
 		if (v) {
 			delayUs(TIMESLOT_START);
@@ -59,58 +72,42 @@ public:
 			delayUs(TIMESLOT - TIMESLOT_START);
 		} else {
 			delayUs(TIMESLOT / 10 * 7);
-			DIRECT_WRITE_HIGH(PIN);	//// drive output high
+			DIRECT_WRITE_LOW(PIN);	//// drive output high
 			delayUs(TIMESLOT - (TIMESLOT / 10 * 7));
 		}
-		interrupts();
 	};
 
 	bool read_bit(void) {
-		bool r;
-		noInterrupts();
+		bool r; AutoInt obj;
 		DIRECT_WRITE_LOW(PIN);
 		delayUs(TIMESLOT_START);
 		DIRECT_WRITE_HIGH(PIN);	// let pin float, pull up will raise
 		delayUs(TIMESLOT / 4);
 		r = DIRECT_READ(PIN);
 		delayUs(TIMESLOT - (TIMESLOT / 4) - TIMESLOT_START);
-		interrupts();
 		return r;
 	}
 	// Write a byte.
-	void write(uint8_t B/*, bool power = 0*/) {
-		for (uint8_t mask = 1; mask; mask <<= 1) write_bit(mask & B);
+	void write(uint8_t data/*, bool power = 0*/) {
+		for (uint8_t m = 1; m; m <<= 1) write_bit(data & m);
 	}
 
-	void write_bytes(const uint8_t* buf, uint16_t count) { 
-		for (uint16_t i = 0; i < count; i++) write(buf[i]); 
+	void write_bytes(const uint8_t* buf, size_t count) {
+		for (size_t i = 0; i < count; i++) write(buf[i]); 
 	}
 	// Read a byte.
-	uint8_t read(void) {
-		for (uint8_t mask = 1, B = 0;;) { if (read_bit()) B |= mask; if (!(mask <<= 1)) return B; }
+	uint8_t read() {
+		uint8_t res = 0;
+		for (uint8_t m = 1; m; m <<= 1) {
+			if (read_bit()) res |= m;
+		} return res;
 	}
 
-	void read_bytes(uint8_t* buf, uint16_t count) { for (uint16_t i = 0; i < count; i++)  buf[i] = read(); }
+	void read_bytes(uint8_t* buf, size_t count) { for (size_t i = 0; i < count; i++)  buf[i] = read(); }
 
 	void skip(void) { write(0xCC); };       // Skip ROM
 
-	void select(const uint8_t(&rom)[8]) { write(0x55); write_bytes(rom, 8); };
-
-	bool search(uint8_t(&rom)[8]) {		//simple search with out buffer
-		uint8_t i = 0, data, bitmask, bit_id;
-		if (!reset()) return false;
-		write(0xF0);
-		do {
-			for (bitmask = 1, data = 0; bitmask; bitmask <<= 1) {
-				bit_id = read_bit();
-				if (bit_id == read_bit()) return false;
-				if (bit_id) data |= bitmask;
-				write_bit(bit_id);
-			}
-			rom[i] = data;
-		} while (++i < 8);
-		return true;
-	};
+	void select(const uint8_t rom[8]) { write(0x55); write_bytes(rom, 8); };
 
 	virtual void power() {};
 	virtual void depower() {};
@@ -118,21 +115,22 @@ public:
 #if ONEWIRE_SEARCH
 	// Clear the search state so that if will start from the beginning again.
 	void reset_search() {
-	// reset the search state
-		LastDiscrepancy = 0;
-		LastDeviceFlag = false;
-		LastFamilyDiscrepancy = 0;
-		memset(ROM_NO, 0, 8);
+		srch = {};
+		//srch.LastDiscrepancy = 0;
+		//srch.LastDeviceFlag = false;
+		//srch.LastFamilyDiscrepancy = 0; 
+		//memset(ROM_NO, 0, sizeof(ROM_NO));
 	};
 	// Setup the search to find the device type 'family_code' on the next call
 	// to search(*newAddr) if it is present.
 	void target_search(uint8_t family_code) {
 	// set the search state to find SearchFamily type devices
-		ROM_NO[0] = family_code;
-		memset(&ROM_NO[1], 0, 7);
-		LastDiscrepancy = 64;
-		LastFamilyDiscrepancy = 0;
-		LastDeviceFlag = false;
+		srch = {};
+		srch.ROM_NO[0] = family_code;
+		//memset(&ROM_NO[1], 0, 7);
+		srch.LastDiscrepancy = 64;
+		//srch.LastFamilyDiscrepancy = 0;
+		//srch.LastDeviceFlag = false;
 	};
 	// Look for the next device. Returns 1 if a new address has been
 	// returned. A zero might mean that the bus is shorted, there are
@@ -143,7 +141,7 @@ public:
 	bool search(uint8_t* newAddr, bool search_mode = true) {
 		uint8_t id_bit_number = 1, last_zero = 0, i = 0, rom_mask;
 		bool search_result = false, bit_id, bit_inv, direction;
-		if (!LastDeviceFlag) { // if the last call was not the last one 
+		if (!srch.LastDeviceFlag) { // if the last call was not the last one 
 			if (!reset()) { // 1-Wire reset
 				reset_search();
 				return false;
@@ -159,29 +157,46 @@ public:
 					else if (bit_id != bit_inv) direction = bit_id;// all devices coupled have 0 or 1	  // bit write value for search
 					else {
 						// if this discrepancy if before the Last Discrepancy on a previous next then pick the same as last time
-						if (id_bit_number < LastDiscrepancy) direction = ((ROM_NO[i] & rom_mask) > 0);
-						else direction = (id_bit_number == LastDiscrepancy); // if equal to last pick 1, if not then pick 0
+						if (id_bit_number < srch.LastDiscrepancy) direction = ((srch.ROM_NO[i] & rom_mask) > 0);
+						else direction = (id_bit_number == srch.LastDiscrepancy); // if equal to last pick 1, if not then pick 0
 						if (direction == 0) { // if 0 was picked then record its position in LastZero
 							last_zero = id_bit_number;
-							if (last_zero < 9)  LastFamilyDiscrepancy = last_zero; // check for Last discrepancy in family
+							if (last_zero < 9)  srch.LastFamilyDiscrepancy = last_zero; // check for Last discrepancy in family
 						}
 					}
-					if (direction == 1) ROM_NO[i] |= rom_mask; // set or clear the bit in the ROM byte
-					else ROM_NO[i] &= ~rom_mask;
+					if (direction == 1) srch.ROM_NO[i] |= rom_mask; // set or clear the bit in the ROM byte
+					else srch.ROM_NO[i] &= ~rom_mask;
 					write_bit(direction); // serial number search direction write bit
 				}
 			} while (++i < 8);  // loop until through all ROM bytes 0-7
 			// if the search was successful then
 			if (id_bit_number > 64) {
-				LastDiscrepancy = last_zero;// search successful so set LastDiscrepancy,LastDeviceFlag,search_result 
-				if (LastDiscrepancy == 0) LastDeviceFlag = true; // check for last device
+				srch.LastDiscrepancy = last_zero;// search successful so set srch.LastDiscrepancy,srch.LastDeviceFlag,search_result 
+				if (srch.LastDiscrepancy == 0) srch.LastDeviceFlag = true; // check for last device
 				search_result = true;
 			}
 		}
 _exit: // if no device found then reset counters so next 'search' will be like a first
-		if (!search_result || !ROM_NO[0]) { reset_search(); } else for (uint8_t i = 0; i < 8; i++) newAddr[i] = ROM_NO[i];
+		if (!search_result || !srch.ROM_NO[0]) { reset_search(); }
+		else memcpy(newAddr, srch.ROM_NO, sizeof(srch.ROM_NO));
 		return search_result;
 };
+#else
+	bool search(uint8_t(&rom)[8]) {		//simple search with out buffer
+		uint8_t i = 0, data, bitmask, bit_id;
+		if (!reset()) return false;
+		write(0xF0);//Serial.print("\n0xF0\t");
+		do {
+			for (bitmask = 1, data = 0; bitmask; bitmask <<= 1) {
+				bit_id = read_bit();
+				if (bit_id == read_bit()) return false;
+				if (bit_id) data |= bitmask;
+				write_bit(bit_id);
+			}
+			rom[i] = data;
+		} while (++i < 8);
+		return true;
+	};
 #endif
 
 #if ONEWIRE_CRC
@@ -191,25 +206,27 @@ _exit: // if no device found then reset counters so next 'search' will be like a
 // Dow-CRC using polynomial X^8 + X^5 + X^4 + X^0
 // Tiny 2x16 entry CRC table created by Arjen Lentz
 // See http://lentz.com.au/blog/calculating-crc-with-a-tiny-32-entry-lookup-table
-	static const uint8_t PROGMEM dscrc2x16_table[] = {
+	
+	// Compute a Dallas Semiconductor 8 bit CRC. These show up in the ROM and the registers. (Use tiny 2x16 entry CRC table)
+	static uint8_t crc8(const uint8_t* addr, uint8_t len) {
+		static const uint8_t PROGMEM dscrc2x16_table[] = {
 		0x00, 0x5E, 0xBC, 0xE2, 0x61, 0x3F, 0xDD, 0x83,
 		0xC2, 0x9C, 0x7E, 0x20, 0xA3, 0xFD, 0x1F, 0x41,
 		0x00, 0x9D, 0x23, 0xBE, 0x46, 0xDB, 0x65, 0xF8,
 		0x8C, 0x11, 0xAF, 0x32, 0xCA, 0x57, 0xE9, 0x74
-	};
-	// Compute a Dallas Semiconductor 8 bit CRC. These show up in the ROM and the registers. (Use tiny 2x16 entry CRC table)
-	uint8_t OneWire::crc8(const uint8_t* addr, uint8_t len) {
+		};
 		uint8_t crc = 0;
 		while (len--) {
 			crc ^= *addr++;  // just re-using crc as intermediate
-			crc = pgm_read_byte(dscrc2x16_table + (crc & 0x0f)) xor pgm_read_byte(dscrc2x16_table + 16 + ((crc >> 4) & 0xF));
+			crc = pgm_read_byte(dscrc2x16_table + (crc & 0x0f)) 
+				xor pgm_read_byte(dscrc2x16_table + 16 + ((crc >> 4) & 0xF));
 		}
 		return crc;
 	}
 #else
 // Compute a Dallas Semiconductor 8 bit CRC directly.
 // this is much slower, but a little smaller, than the lookup table.
-	uint8_t crc8(const uint8_t* addr, uint8_t len) {
+	static uint8_t crc8(const uint8_t* addr, uint8_t len) {
 		uint8_t crc = 0;
 		while (len--) {
 #if defined(__AVR__)
