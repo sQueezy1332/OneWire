@@ -72,7 +72,7 @@ public:
 			delayUs(TIMESLOT - TIMESLOT_START);
 		} else {
 			delayUs(TIMESLOT / 10 * 7);
-			DIRECT_WRITE_LOW(PIN);	//	 drive output low
+			DIRECT_WRITE_HIGH(PIN);	//	 drive output high
 			delayUs(TIMESLOT - (TIMESLOT / 10 * 7));
 		}
 	};
